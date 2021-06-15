@@ -1,22 +1,21 @@
-# 이미지를 읽어와 엣지로 저장
+# 이미지체서 엣지를 추출해 저장
+# canny threshold는 heuristic하게 결정함
 
+import os
 import cv2
-
-import matplotlib.pyplot as plt
-
-
 import glob
 import random
 
-dataset = "twilight landscape"
+dataset = "twilight landscape"  # data folder
 
-target_path = "images/train/"+dataset+"/"
-image_ids = glob.glob(target_path+"*")
-path = "images/train/"+dataset+"/"
+color_path = "images/"+dataset+"/"
+image_ids = glob.glob(color_path+"*")
+path = "images/"+dataset+" edge/"
 
 for i in image_ids:
-    print(i)
-    image = cv2.imread(i)
-    print(type(image))
-    canny = ~cv2.Canny(image, random.randrange(100, 151), random.randrange(500, 551))
-    cv2.imwrite(path+i[len(target_path):], canny)
+    try:  # 간혹 load가 안되는 경우가 있음
+        canny = ~cv2.Canny(cv2.imread(i), random.randrange(100, 201), random.randrange(500, 601))
+    except:
+        os.remove(i)
+        continue
+    cv2.imwrite(path+i[len(color_path):], canny)
