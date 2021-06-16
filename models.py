@@ -63,8 +63,6 @@ def define_G(input_nc, output_nc, norm='batch', init_type='normal'):
     return init_net(net, init_type, init_gain)
 
 
-# Defines the generator that consists of Resnet blocks between a few
-# downsampling/upsampling operations.
 class ResnetGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, norm="instance"):
         super(ResnetGenerator, self).__init__()
@@ -146,9 +144,7 @@ class UNetUp(nn.Module):
 
     def forward(self, x, skip_input):
         x = self.model(x)
-
         x = torch.cat((x, skip_input), 1)
-
         return x
 
 
@@ -157,13 +153,12 @@ def define_D(input_nc, init_type='normal', init_gain=0.02):
     return init_net(net, init_type, init_gain)
 
 
-# Defines the PatchGAN discriminator with the specified arguments.
+# Patchgan
 class Discriminator(nn.Module):
     def __init__(self, input_nc=3):
         super(Discriminator, self).__init__()
 
         def discriminator_block(in_filters, out_filters, normalization=True):
-            """Returns downsampling layers of each discriminator block"""
             layers = [nn.Conv2d(in_filters, out_filters, 4, stride=2, padding=1)]
             if normalization:
                 layers.append(nn.InstanceNorm2d(out_filters))
@@ -172,7 +167,7 @@ class Discriminator(nn.Module):
 
         self.model = nn.Sequential(
             # edge + color = 4 channels
-            *discriminator_block(4, 64, normalization=False),
+            *discriminator_block(1+input_nc, 64, normalization=False),
             *discriminator_block(64, 128),
             *discriminator_block(128, 256),
             *discriminator_block(256, 512),
