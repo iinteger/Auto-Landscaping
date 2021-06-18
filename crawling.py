@@ -1,6 +1,7 @@
+# contributed by https://coder38611.tistory.com/6
+
 from requests import get
 from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
 from time import sleep
 import os
