@@ -3,29 +3,15 @@
 import torch
 import torch.nn as nn
 from torch.nn import init
-import functools
 from torch.optim import lr_scheduler
 
-
-def get_scheduler(optimizer, opt):
-    if opt.lr_policy == 'lambda':
-        def lambda_rule(epoch):
-            lr_l = 1.0 - max(0, epoch + opt.epoch_count - opt.niter) / float(opt.niter_decay + 1)
-            return lr_l
-        scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda_rule)
-    elif opt.lr_policy == 'step':
-        scheduler = lr_scheduler.StepLR(optimizer, step_size=opt.lr_decay_iters, gamma=0.1)
-    elif opt.lr_policy == 'cosine':
-        scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=opt.niter, eta_min=0)
-    else:
-        return NotImplementedError('learning rate policy [%s] is not implemented', opt.lr_policy)
-    return scheduler
 
 # update learning rate (called once every epoch)
 def update_learning_rate(scheduler, optimizer):
     scheduler.step()
     lr = optimizer.param_groups[0]['lr']
     print('learning rate = %.7f' % lr)
+
 
 def init_weights(net, init_type='normal', gain=0.02):
     def init_func(m):
@@ -64,7 +50,7 @@ def define_G(input_nc, output_nc, norm='batch', init_type='normal'):
 
 
 class ResnetGenerator(nn.Module):
-    def __init__(self, input_nc, output_nc, norm="instance"):
+    def __init__(self, input_nc, output_nc, norm="batch"):
         super(ResnetGenerator, self).__init__()
 
         self.down1 = UNetDown(input_nc, 64, norm_layer=False)
@@ -112,7 +98,7 @@ class ResnetGenerator(nn.Module):
 
 
 class UNetDown(nn.Module):
-    def __init__(self, in_ch, out_ch, norm_layer="instance", dropout=0.0):
+    def __init__(self, in_ch, out_ch, norm_layer="batch", dropout=0.0):
         super(UNetDown, self).__init__()
         layers = [nn.Conv2d(in_ch, out_ch, kernel_size=4, stride=2, padding=1)]
 
@@ -134,8 +120,10 @@ class UNetDown(nn.Module):
 class UNetUp(nn.Module):
     def __init__(self, in_nc, out_nc, dropout=0.0):
         super(UNetUp, self).__init__()
+
+
         layers = [nn.ConvTranspose2d(in_nc, out_nc, kernel_size=4, stride=2, padding=1),
-                  nn.InstanceNorm2d(out_nc),
+                  nn.BatchNorm2d(out_nc),
                   nn.ReLU(inplace=True)]
         if dropout:
             layers.append(nn.Dropout(dropout))
@@ -153,29 +141,41 @@ def define_D(input_nc, init_type='normal', init_gain=0.02):
     return init_net(net, init_type, init_gain)
 
 
-# Patchgan
 class Discriminator(nn.Module):
     def __init__(self, input_nc=3):
         super(Discriminator, self).__init__()
 
-        def discriminator_block(in_filters, out_filters, normalization=True):
-            layers = [nn.Conv2d(in_filters, out_filters, 4, stride=2, padding=1)]
-            if normalization:
-                layers.append(nn.InstanceNorm2d(out_filters))
-            layers.append(nn.LeakyReLU(0.2, inplace=True))
-            return layers
+        def discriminator_block(in_filters, out_filters, normalize="batch"):
+            if normalize == "batch":
+                norm_layer = nn.BatchNorm2d(out_filters)
+            elif normalize == "instance":
+                norm_layer = nn.InstanceNorm2d(out_filters)
+            else:
+                return nn.Sequential(
+                    nn.Conv2d(in_filters, out_filters, 4, stride=2, padding=1),
+                    nn.LeakyReLU(0.2, inplace=True)
+                )
 
-        self.model = nn.Sequential(
-            # edge + color = 4 channels
-            *discriminator_block(1+input_nc, 64, normalization=False),
-            *discriminator_block(64, 128),
-            *discriminator_block(128, 256),
-            *discriminator_block(256, 512),
-            nn.ZeroPad2d((1, 0, 1, 0)),
-            nn.Conv2d(512, 1, 4, padding=1, bias=False)
-        )
+            return nn.Sequential(
+                nn.Conv2d(in_filters, out_filters, 4, stride=2, padding=1),
+                norm_layer,
+                nn.LeakyReLU(0.2, inplace=True)
+            )
+
+        self.layer1 = discriminator_block(4, 64, normalize=False)
+        self.layer2 = discriminator_block(64, 128)
+        self.layer3 = discriminator_block(128, 256)
+        self.layer4 = discriminator_block(256, 512)
+        self.layer5 = discriminator_block(512, 1, normalize=False)
+
+
 
     def forward(self, img_A, img_B):
         # Concatenate image and condition image by channels to produce input
         img_input = torch.cat((img_A, img_B), 1)
-        return self.model(img_input)
+        x = self.layer1(img_input)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+        x = self.layer5(x)
+        return torch.sigmoid(x)
