@@ -20,14 +20,13 @@ plt.axis("off")
 
 # Training settings
 parser = argparse.ArgumentParser(description='pix2pix-pytorch-implementation')
-parser.add_argument('--batch_size', type=int, default=1, help='training batch size')
-parser.add_argument('--test_batch_size', type=int, default=1, help='testing batch size')
+parser.add_argument('--batch_size', type=int, default=64, help='training batch size')
+parser.add_argument('--test_batch_size', type=int, default=2, help='testing batch size')
 parser.add_argument('--direction', type=str, default='a2b', help='a2b or b2a')
-parser.add_argument("--epoch", type=int, default=183, help="epoch to start training from")
+parser.add_argument("--epoch", type=int, default=0, help="epoch to start training from")
 parser.add_argument("--n_epochs", type=int, default=500, help="number of epochs of training")
 parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for adam')
 parser.add_argument('--lr_policy', type=str, default='cosine', help='learning rate policy: lambda|step|plateau|cosine')
-parser.add_argument('--beta1', type=float, default=0.5, help='beta1 for adam. default=0.5')
 parser.add_argument('--cuda', action='store_true', help='use cuda?')
 parser.add_argument('--seed', type=int, default=0)
 opt = parser.parse_args()
@@ -52,8 +51,7 @@ root_path = "dataset/"
 train_transform = transforms.Compose([
     transforms.RandomHorizontalFlip(p=0.5),
     transforms.Resize((img_size, img_size)),
-    transforms.ToTensor(),
-    # transforms.Normalize((0.5), (0.5))
+    transforms.ToTensor()
 ])
 
 test_transform = transforms.Compose([
@@ -74,19 +72,17 @@ Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 print("cuda :", cuda)
 
 print('===> Building models')
-generator = define_G(input_nc=1, output_nc=3, norm="instance")
+generator = define_G(input_nc=1, output_nc=3, norm="batch")
 discriminator = define_D(input_nc=4)
 generator = DataParallel(generator)
 discriminator = DataParallel(discriminator)
 
-criterion_GAN = nn.MSELoss()
+#criterion_GAN = nn.MSELoss()
+criterion_GAN = nn.BCELoss()
 criterion_pixelwise = nn.L1Loss()
 
 # loss weight if l1 loss
-lambda_pixel = 1
-
-# Calculate output of image discriminator (PatchGAN)
-patch = (1, img_size // 2 ** 4, img_size // 2 ** 4)
+lambda_pixel = 30
 
 if cuda:
     generator = generator.cuda()
@@ -100,8 +96,8 @@ if opt.epoch != 0:
     discriminator.load_state_dict(torch.load("saved_models/%s/discriminator_%d.pth" % (dataset, opt.epoch)))
 
 # setup optimizer
-optimizer_g = optim.Adam(generator.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
-optimizer_d = optim.Adam(discriminator.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
+optimizer_g = optim.Adam(generator.parameters(), lr=opt.lr, betas=(0.5, 0.999))
+optimizer_d = optim.Adam(discriminator.parameters(), lr=opt.lr, betas=(0.5, 0.999))
 
 generator_scheduler = lr_scheduler.CosineAnnealingLR(optimizer_g, T_max=opt.n_epochs, eta_min=0)
 discriminator_scheduler = lr_scheduler.CosineAnnealingLR(optimizer_d, T_max=opt.n_epochs, eta_min=0)
@@ -114,21 +110,23 @@ for epoch in range(opt.epoch, opt.n_epochs):
         real_B = Variable(batch["B"].type(Tensor))  # color
 
         # adversarial ground truths
-        valid = Variable(Tensor(np.ones((real_A.size(0), *patch))), requires_grad=False)
-        fake = Variable(Tensor(np.zeros((real_A.size(0), *patch))), requires_grad=False)
+        #valid = Variable(Tensor(np.ones((real_A.size(0), *patch))), requires_grad=False)
+        #fake = Variable(Tensor(np.zeros((real_A.size(0), *patch))), requires_grad=False)
 
         # generator train start
         optimizer_g.zero_grad()
 
+
         # gan loss
         fake_B = generator(real_A)  # 엣지를 받아서 가짜 컬러 이미지를 생성
         pred_fake = discriminator(fake_B, real_A)  # 가짜 컬러 이미지와 진짜 엣지 이미지(condition)을 넣어서(concat) inference
-        loss_GAN = criterion_GAN(pred_fake, valid)
+
+        loss_G_GAN = criterion_GAN(pred_fake, torch.ones_like(pred_fake))
         #pixel-wise loss
         loss_pixel = criterion_pixelwise(fake_B, real_B)  # 생성한 가짜 컬러 이미지와 진짜 컬러 이미지의 l1 loss 계산
 
         # total loss
-        loss_G = loss_GAN + loss_pixel * lambda_pixel  # 논문에서는 가중값을 100 사용했는데, 이후 10이 적당하다고 함. 실험 해봐야 할듯!
+        loss_G = (loss_G_GAN + loss_pixel * lambda_pixel)  # 논문에서는 가중값을 100 사용했는데, 이후 10이 적당하다고 함. 실험 해봐야 할듯!
 
         loss_G.backward()
         optimizer_g.step()
@@ -139,14 +137,14 @@ for epoch in range(opt.epoch, opt.n_epochs):
 
         # real loss
         pred_real = discriminator(real_B, real_A)  # 실제 컬러 이미지와 실제 엣지 이미지(condition)을 넣어서(concat) inference
-        loss_real = criterion_GAN(pred_real, valid)  # 진짜를 추론한 결과와 True의 mse. 1(True)로 추론할 수록 error가 낮아짐
+        loss_real = criterion_GAN(pred_real, torch.ones_like(pred_fake))  # 진짜를 추론한 결과와 True의 mse. 1(True)로 추론할 수록 error가 낮아짐
 
         # fake loss
         pred_fake = discriminator(fake_B.detach(), real_A)  # 가짜 컬러 이미지와 실제 엣지 이미지를 넣어서 inference. fake_B는 G로부터 나온 Tensor이기 때문에 detach를 하지 않으면 역전파가 흘러들어감
-        loss_fake = criterion_GAN(pred_fake, fake)  # 가짜를 추론한 결과와 False의 mse. 0(False)로 추론할 수록 error가 낮아짐
+        loss_fake = criterion_GAN(pred_fake, torch.zeros_like(pred_fake))  # 가짜를 추론한 결과와 False의 mse. 0(False)로 추론할 수록 error가 낮아짐
 
         # total loss
-        loss_D = 0.25*(loss_real + loss_fake)
+        loss_D = 0.5*(loss_real + loss_fake)
 
         loss_D.backward()
         optimizer_d.step()
@@ -156,17 +154,19 @@ for epoch in range(opt.epoch, opt.n_epochs):
 
     update_learning_rate(generator_scheduler, optimizer_g)
     update_learning_rate(discriminator_scheduler, optimizer_d)
+
     # test
     avg_psnr = 0
     for batch in testing_data_loader:
         real_A_test = Variable(batch["A"].type(Tensor))  # edge
         real_B_test = Variable(batch["B"].type(Tensor))  # edge
 
-        prediction = generator(real_A_test)
-        mse = criterion_GAN(prediction, real_B_test)
-        psnr = 10 * log10(1 / mse.item())
-        avg_psnr += psnr
-    print("===> Avg. PSNR: {:.4f} dB".format(avg_psnr / len(testing_data_loader)))
+    #     prediction = generator(real_A_test)
+    #     bce = criterion_GAN(prediction, real_B_test)
+    #     psnr = 10 * log10(1 / bce.item())
+    #     avg_psnr += psnr
+    #
+    # print("===> Avg. PSNR: {:.4f} dB".format(avg_psnr / len(testing_data_loader)))
     print("epoch "+str(epoch)+": "+str(time.time()-start))
 
     f = open("PSNR_list.txt", 'a')
@@ -181,24 +181,21 @@ for epoch in range(opt.epoch, opt.n_epochs):
 
         # test
         with torch.no_grad():
-            for i, batch_test in enumerate (testing_data_loader):
-
-                # test
+            for j, batch_test in enumerate (testing_data_loader):
                 real_A_test = Variable(batch_test["A"].type(Tensor))  # edge
-
                 fake_B_test = generator(real_A_test)
                 out_img = fake_B_test.detach().squeeze(0).cpu()
+                for i in range(1):
 
-                fig, axes = plt.subplots(1, 3, figsize=(18,6))
-                axes[0].imshow(real_A_test.cpu().squeeze(0).permute(1,2,0), cmap="gray")
-                axes[0].axis("off")
+                    # test
+                    fig, axes = plt.subplots(1, 3, figsize=(18,6))
+                    print(real_A_test[i].shape)
+                    axes[0].imshow(real_A_test[i].cpu().permute(1,2,0), cmap="gray")
+                    axes[0].axis("off")
 
-                axes[1].imshow(out_img.permute(1,2,0))
-                axes[1].axis("off")
-
-                axes[2].imshow(batch_test["B"].squeeze(0).permute(1, 2, 0))
-                axes[2].axis("off")
-                plt.savefig("per_epoch_result/{}_{}.jpg".format(epoch, i))
-
-                if i == 1:
-                    break
+                    axes[1].imshow(out_img[i].permute(1,2,0))
+                    axes[1].axis("off")
+                    axes[2].imshow(batch_test["B"][i].permute(1, 2, 0))
+                    axes[2].axis("off")
+                    plt.savefig("per_epoch_result/{}_{}.jpg".format(epoch, i))
+                break
