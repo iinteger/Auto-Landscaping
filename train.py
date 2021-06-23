@@ -8,7 +8,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 import torch.backends.cudnn as cudnn
 from torchvision import transforms
-from models import define_G, define_D, update_learning_rate
+from models import *
 from dataset import My_Dataset
 from torch.nn import DataParallel
 import time
@@ -82,7 +82,7 @@ criterion_GAN = nn.BCELoss()
 criterion_pixelwise = nn.L1Loss()
 
 # loss weight if l1 loss
-lambda_pixel = 30
+lambda_pixel = 100
 
 if cuda:
     generator = generator.cuda()
@@ -94,6 +94,9 @@ if opt.epoch != 0:
     # Load pretrained models
     generator.load_state_dict(torch.load("saved_models/%s/generator_%d.pth" % (dataset, opt.epoch)))
     discriminator.load_state_dict(torch.load("saved_models/%s/discriminator_%d.pth" % (dataset, opt.epoch)))
+else:
+    generator.apply(weights_init_normal)
+    discriminator.apply(weights_init_normal)
 
 # setup optimizer
 optimizer_g = optim.Adam(generator.parameters(), lr=opt.lr, betas=(0.5, 0.999))

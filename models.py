@@ -6,6 +6,14 @@ from torch.nn import init
 from torch.optim import lr_scheduler
 
 
+def weights_init_normal(m):
+    classname = m.__class__.__name__
+    if classname.find("Conv") != -1:
+        torch.nn.init.normal_(m.weight.data, 0.0, 0.02)
+    elif classname.find("BatchNorm2d") != -1:
+        torch.nn.init.normal_(m.weight.data, 1.0, 0.02)
+        torch.nn.init.constant_(m.bias.data, 0.0)
+
 # update learning rate (called once every epoch)
 def update_learning_rate(scheduler, optimizer):
     scheduler.step()
@@ -53,20 +61,20 @@ class ResnetGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, norm="batch"):
         super(ResnetGenerator, self).__init__()
 
-        self.down1 = UNetDown(input_nc, 64, norm_layer=False)
+        self.down1 = UNetDown(input_nc, 64)
         self.down2 = UNetDown(64, 128, norm_layer=norm)
         self.down3 = UNetDown(128, 256, norm_layer=norm)
-        self.down4 = UNetDown(256, 512, norm_layer=norm, dropout=0.5)
-        self.down5 = UNetDown(512, 512, norm_layer=norm, dropout=0.5)
-        self.down6 = UNetDown(512, 512, norm_layer=norm, dropout=0.5)
-        self.down7 = UNetDown(512, 512, norm_layer=norm, dropout=0.5)
-        self.down8 = UNetDown(512, 512, norm_layer=False, dropout=0.5)
+        self.down4 = UNetDown(256, 512, norm_layer=norm)
+        self.down5 = UNetDown(512, 512, norm_layer=norm)
+        self.down6 = UNetDown(512, 512, norm_layer=norm)
+        self.down7 = UNetDown(512, 512, norm_layer=norm)
+        self.down8 = UNetDown(512, 512)
 
         self.up1 = UNetUp(512, 512, dropout=0.5)
         self.up2 = UNetUp(1024, 512, dropout=0.5)
         self.up3 = UNetUp(1024, 512, dropout=0.5)
-        self.up4 = UNetUp(1024, 512, dropout=0.5)
-        self.up5 = UNetUp(1024, 256, dropout=0.5)
+        self.up4 = UNetUp(1024, 512)
+        self.up5 = UNetUp(1024, 256)
         self.up6 = UNetUp(512, 128)
         self.up7 = UNetUp(256, 64)
 
@@ -98,7 +106,7 @@ class ResnetGenerator(nn.Module):
 
 
 class UNetDown(nn.Module):
-    def __init__(self, in_ch, out_ch, norm_layer="batch", dropout=0.0):
+    def __init__(self, in_ch, out_ch, norm_layer=False, dropout=0.0):
         super(UNetDown, self).__init__()
         layers = [nn.Conv2d(in_ch, out_ch, kernel_size=4, stride=2, padding=1)]
 
