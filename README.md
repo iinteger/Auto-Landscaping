@@ -14,7 +14,7 @@ Auto painting by Pix2Pix
 
   
 
-  <img src="images/0.jpg" />
+<img src="images/0.jpg" />
 
 <img src="images/7.jpg" />
 
