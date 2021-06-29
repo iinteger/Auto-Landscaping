@@ -28,3 +28,12 @@ Auto painting by Pix2Pix
 
 <img src="images/test6.jpg" />
 
+* image size= 512, ConvTranspose를 grid artifact issue로 upsample+Conv layer로 대체
+
+  <img src="images/512_0.jpg" />
+
+  <img src="images/512_1.jpg" />
+
+  - 물결치는듯한 이미지가 생성되고 skip-connection이 없는 encoder-decoder구조에서 발견되는 반복되는듯한 그림이 나타남
+  - high resolution을 generator가 수용하지 못해서 생기는 퀄리티의 저하인지, architecture 구조 변경으로 인한 문제인지 확인해야 함
+
