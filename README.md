@@ -52,3 +52,11 @@ Auto painting by Pix2Pix
 
     
 
+* image size=512, baseline
+
+  <img src="images/18_512_baseline.jpg" />
+
+  <img src="images/15_512_baseline.jpg" />
+
+  <img src="images/29_512_baseline.jpg" />
+  * 해상도가 높아져 이미지도 선명하나 우측 하단과 좌측 하단에 과적합으로 생긴듯한 Patch가 보임
