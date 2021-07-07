@@ -51,6 +51,7 @@ Auto painting by Pix2Pix
   - image size 512와 유사한 문제가 나타남
 
     
+<br/>
 
 * image size=512, baseline
 
